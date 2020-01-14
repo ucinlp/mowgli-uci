@@ -28,7 +28,8 @@ Documentation for how the graph is created is available in `graphify_documentati
 
 ## Linking Instructions
 
-To obtain link candidates run the following (the arguments need to be in quotes):
+To obtain link candidates run the following (the arguments need to be in quotes).
+The input file should be the output of the `graphify.py` file.
 ```{Python}
 python link.py link \
 	--input [INPUT FILE] \
