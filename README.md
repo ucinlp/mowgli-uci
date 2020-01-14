@@ -1,27 +1,34 @@
 # mowgli-uci
-code related to UCI MOWGLI project
+Code related to UCI MOWGLI project. Tested on Ubuntu 18.04.2 LTS.
 
+## Getting Started
+Our installations will be in a conda environment. If you don't have a conda installed, follow \[[link](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)\] to install it. 
 
-## Getting started
-
-To install the necessary dependencies run:
+Then set up your own conda environment and install packages.
 ```{bash}
-pip install -r requirements.txt
-```
-You will also need to download the latest ConceptNet Numberbatch embeddings \[[link](https://conceptnet.s3.amazonaws.com/downloads/2019/numberbatch/numberbatch-en-19.08.txt.gz)\]
+conda create -n mowgli-env python=3.6 anaconda
+source activate mowgli-env
 
+pip install -r requirements.txt
+conda install --yes faiss-cpu -c pytorch -n mowgli-env
+python -m spacy download en_core_web_lg
+```
+
+You will also need to download the latest ConceptNet Numberbatch embeddings \[[link](https://conceptnet.s3.amazonaws.com/downloads/2019/numberbatch/numberbatch-en-19.08.txt.gz)\] and unzip it.
+
+## Graphify Instructions
 
 ## Linking Instructions
 
-To obtain link candidates run:
-```{bash}
+To obtain link candidates run the following (the arguments need to be in quotes):
+```{Python}
 python link.py link \
     --input [INPUT FILE] \
     --output [OUTPUT FILE] \
-    --embeddings [PATH TO THE NUMBERBATCH EMBEDDINGS]
+    --embedding_file [PATH TO THE NUMBERBATCH EMBEDDINGS]
 ```
 
 For further details run:
-```{bash}
+```{Python}
 python link.py link --help
 ```

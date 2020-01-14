@@ -207,7 +207,7 @@ def link(input: Path,
                     'score': score.item()
                 })
                 # candidate_concept = print(f"      {candidate} :: {score:0.4f}")
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         output_file.write(json.dumps(output_instance) + '\n')
 
 

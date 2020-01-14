@@ -127,3 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Numberbatch embeddings
+numberbatch-en-19.08.txt
