@@ -17,6 +17,14 @@ python -m spacy download en_core_web_lg
 You will also need to download the latest ConceptNet Numberbatch embeddings \[[link](https://conceptnet.s3.amazonaws.com/downloads/2019/numberbatch/numberbatch-en-19.08.txt.gz)\] and unzip it.
 
 ## Graphify Instructions
+To convert a text file of sentences (each line has a string) to a JSONL file of graphs, run the following:
+```{Python}
+python graphify.py 
+	--input [INPUT_FILE] # A text file with a sentence (or sentences) per line
+	--output [OUTPUT_FILE] # A JSONL file with one graph per line
+```
+
+Documentation for how the graph is created is available in `graphify_documentation/`.
 
 ## Linking Instructions
 
@@ -32,3 +40,5 @@ For further details run:
 ```{Python}
 python link.py link --help
 ```
+
+## Demo
