@@ -42,3 +42,9 @@ python link.py link --help
 ```
 
 ## Demo
+We have some files in `demo/` to illustrate what the outputs are these scripts look like. 
+The files in `demo/` were produced using the following commands:
+```
+python graphify.py --input demo/sentences.txt --output demo/graphs.jsonl
+python link.py link --input demo/graphs.jsonl --output demo/linked_graphs.jsonl --embedding_file numberbatch-en-19.08.txt
+```
