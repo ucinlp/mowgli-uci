@@ -182,9 +182,6 @@ def link(input: Path,
     output_file = open(output, 'w')
     for instance in generate_instances(input):
         output_instance = instance.copy()
-        # print("===")
-        # print(f"TEXT: {' '.join(instance['all_words'])}")
-        # print("ENTITIES")
         for uri, node in instance['nodes'].items():
             mention = ' '.join(node['phrase'])
             tokens = english_filter([x.lower() for x in node['phrase']])
@@ -196,21 +193,20 @@ def link(input: Path,
             else:
                 scores = candidate_ids = []
 
-            # print(f"  * MENTION: {mention}")
-            # print(f"    CONCEPTS: {concepts}")
-            # print("    CANDIDATES")
             output_instance['nodes'][uri]['candidates'] = []
             for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
+                if '#' in candidate:
+                    logger.warning('Encountered a uri containing an #. Due to preprocessing steps '
+                                   'used to produce the ConceptNet Numberbatch embeddings this is '
+                                   'likely a bad link, and will be skipped.')
+                    continue
                 candidate = vocab.idx_to_word[candidate_id]
                 output_instance['nodes'][uri]['candidates'].append({
-                    'uri': candidate_id.item(),
+                    'uri': '/c/en/' + candidate,  # TODO: Support other KBs
                     'score': score.item()
                 })
-                # candidate_concept = print(f"      {candidate} :: {score:0.4f}")
-        # import pdb; pdb.set_trace()
         output_file.write(json.dumps(output_instance) + '\n')
 
 
 if __name__ == '__main__':
     autocli.parse_and_run()
-
