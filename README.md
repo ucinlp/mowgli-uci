@@ -2,7 +2,7 @@
 Code related to UCI MOWGLI project. Tested on Ubuntu 18.04.2 LTS.
 
 ## Getting Started
-Our installations will be in a conda environment. If you don't have a conda installed, follow \[[link](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)\] to install it. 
+Our installations will be in a conda environment. If you don't have a conda installed, follow \[[link](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)\] to install it.
 
 Then set up your own conda environment and install packages.
 ```{bash}
@@ -19,7 +19,7 @@ You will also need to download the latest ConceptNet Numberbatch embeddings \[[l
 ## Graphify Instructions
 To convert a text file of sentences (each line has a string) to a JSONL file of graphs (each line has a JSON graph), run the following:
 ```{Python}
-python graphify.py 
+python graphify.py
 	--input [INPUT_FILE] # A text file with a sentence (or sentences) per line
 	--output [OUTPUT_FILE] # A JSONL file with one graph per line
 ```
@@ -37,13 +37,13 @@ python link.py link \
 	--embedding_file [PATH TO THE NUMBERBATCH EMBEDDINGS]
 ```
 
-For further details run:
+For further details and additional arguments see:
 ```{Python}
-python link.py link --help
+python link.py --help
 ```
 
 ## Demo
-We have some files in `demo/` to illustrate what the outputs are these scripts look like. 
+We have some files in `demo/` to illustrate what the outputs are these scripts look like.
 The files in `demo/` were produced using the following commands:
 ```
 python graphify.py --input demo/sentences.txt --output demo/graphs.jsonl

@@ -1,3 +1,4 @@
+import argparse
 from functools import partial
 import hashlib
 import json
@@ -6,15 +7,16 @@ from pathlib import Path
 import pickle
 from typing import Callable, List, Tuple
 
-import autocli
 import faiss
 import numpy as np
 from tqdm import tqdm
 
 from text_to_uri import english_filter, replace_numbers
 
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
 
 CACHE_DIR = Path('.cache/')
 
@@ -139,12 +141,11 @@ def greedy_extraction(tokens: List[str],
     return out
 
 
-@autocli.add_command()
 def link(input: Path,
          output: Path,
          embedding_file: Path,
          metric: str = 'cosine',
-         extraction_strategy: str = 'exhaustive',
+         extraction_strategy: str = 'greedy',
          ngram_length: int = 3,
          num_candidates: int = 5,
          debug: bool = False) -> None:
@@ -166,7 +167,7 @@ def link(input: Path,
     ngram_length: int
         Max length of n-grams to consider during concept extraction.
     num_candidates : int
-        Number of candidates to display.
+        Number of candidates to return.
     """
     assert metric in {'cosine', 'l2'}
     assert extraction_strategy in {'exhaustive', 'greedy'}
@@ -182,9 +183,6 @@ def link(input: Path,
     output_file = open(output, 'w')
     for instance in generate_instances(input):
         output_instance = instance.copy()
-        # print("===")
-        # print(f"TEXT: {' '.join(instance['all_words'])}")
-        # print("ENTITIES")
         for uri, node in instance['nodes'].items():
             mention = ' '.join(node['phrase'])
             tokens = english_filter([x.lower() for x in node['phrase']])
@@ -195,22 +193,49 @@ def link(input: Path,
                 scores, candidate_ids = index.search(query, num_candidates)
             else:
                 scores = candidate_ids = []
-
-            # print(f"  * MENTION: {mention}")
-            # print(f"    CONCEPTS: {concepts}")
-            # print("    CANDIDATES")
             output_instance['nodes'][uri]['candidates'] = []
             for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
                 candidate = vocab.idx_to_word[candidate_id]
+                if '#' in candidate:
+                    logger.warning(f'Encountered candidate URI: "{candidate}". Due to preprocessing steps '
+                                    'used to produce the ConceptNet Numberbatch embeddings this is '
+                                    'likely a bad link, and will be skipped.')
+                    continue
                 output_instance['nodes'][uri]['candidates'].append({
-                    'uri': candidate_id.item(),
+                    'uri': '/c/en/' + candidate,  # TODO: Support other KBs
                     'score': score.item()
                 })
-                # candidate_concept = print(f"      {candidate} :: {score:0.4f}")
-        # import pdb; pdb.set_trace()
+
         output_file.write(json.dumps(output_instance) + '\n')
 
 
-if __name__ == '__main__':
-    autocli.parse_and_run()
+def main():
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--input', type=Path, required=True, help='JSON-Lines file containing the text graphs.')
+    parser.add_argument('--output', type=Path, required=True, help='Output JSON-Lines file.')
+    parser.add_argument('--embedding_file', type=Path, required=True,
+                        help='KG node embeddings. Currently only ConceptNet Numberbatch supported.')
+    parser.add_argument('--metric', type=str, default='cosine',
+                        help='Distance metric used for nearest neighbor search. One of: "cosine", "l2".')
+    parser.add_argument('--extraction_strategy', type=str, default='greedy',
+                        help='Approach for extracting concepts from text. One of: "exhaustive", "greedy". '
+                             'Exhaustive extraction produces all viable n-grams, e.g., "high school" -> {"high", "school", "high_school"}. '
+                             'Greedy search produces only the largest viable n-grams, e.g., "high school" -> {"high_school"}.')
+    parser.add_argument('--ngram_length', type=int, default=3,
+                        help='Maximum length of ngrams to consider when converting text to KG nodes (i.e. ConceptNet concepts).')
+    parser.add_argument('--num_candidates', type=int, default=5, help='Number of candidates to return.')
+    parser.add_argument('--debug', action='store_true', help='Enables debug statements.')
+    args, _ = parser.parse_known_args()
 
+    link(input=args.input,
+         output=args.output,
+         embedding_file=args.embedding_file,
+         metric=args.metric,
+         extraction_strategy=args.extraction_strategy,
+         ngram_length=args.ngram_length,
+         num_candidates=args.num_candidates,
+         debug=args.debug)
+
+
+if __name__ == '__main__':
+    main()
