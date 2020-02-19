@@ -6,6 +6,8 @@ from json import dumps
 import spacy
 from tqdm import tqdm
 
+
+# Change this to use the GPU
 CUDA_DEVICE = -1
 COREF_MODEL = "https://s3-us-west-2.amazonaws.com/allennlp/models/coref-model-2018.02.05.tar.gz"
 SRL_MODEL = "https://s3-us-west-2.amazonaws.com/allennlp/models/bert-base-srl-2019.06.17.tar.gz"
@@ -242,7 +244,6 @@ def graphify(sentence: str):
 	return graph
 
 def graphify_dataset(sentences, output_file=None, ):
-        # Change this to use the GPU
         global spacy_parser, coref_predictor, srl_predictor
         
         spacy_parser = spacy.load(SPACY_MODEL, disable=['parser', 'tagger'])
