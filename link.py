@@ -6,19 +6,21 @@ import logging
 from pathlib import Path
 import pickle
 from typing import Callable, List, Tuple
+import warnings
 
 import faiss
 import numpy as np
+import spacy
 from tqdm import tqdm
 
 from text_to_uri import english_filter, replace_numbers
 
 
+CACHE_DIR = Path('.cache/')
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-CACHE_DIR = Path('.cache/')
+nlp = spacy.load('en_core_web_lg')
 
 
 def init_cache():
@@ -108,13 +110,16 @@ def get_extraction_fn(extraction_strategy: str,
         return partial(exhaustive_extraction, ngram_length=ngram_length)
     elif extraction_strategy == 'greedy':
         return partial(greedy_extraction, ngram_length=ngram_length)
+    elif extraction_strategy == 'root':
+        return partial(root_extraction, ngram_length=ngram_length)
     else:
         raise ValueError(f'Bad extraction strategy: {extraction_strategy}')
 
 
-def exhaustive_extraction(tokens: List[str],
+def exhaustive_extraction(phrase: List[str],
                           vocab: Vocab,
                           ngram_length: int) -> List[str]:
+    tokens = english_filter([x.lower() for x in phrase])
     num_tokens = len(tokens)
     out = []
     for n in range(1, ngram_length):
@@ -125,9 +130,10 @@ def exhaustive_extraction(tokens: List[str],
     return out
 
 
-def greedy_extraction(tokens: List[str],
+def greedy_extraction(phrase: List[str],
                       vocab: Vocab,
                       ngram_length: int) -> List[str]:
+    tokens = english_filter([x.lower() for x in phrase])
     out = []
     while len(tokens) > 0:
         for n in range(ngram_length + 1, 0, -1):
@@ -139,6 +145,36 @@ def greedy_extraction(tokens: List[str],
             elif n == 1:
                 tokens = tokens[n:]
     return out
+
+
+def root_extraction(phrase: List[str],
+                    vocab: Vocab,
+                    ngram_length: int) -> List[str]:
+    doc = nlp(' '.join(phrase))
+
+    # Logic for noun phrases
+    for chunk in doc.noun_chunks:
+        if chunk.root.dep_ == 'ROOT':
+
+            # Return entire chunk if in vocab
+            tokens = english_filter([token.text.lower() for token in chunk])
+            concept = replace_numbers('_'.join(tokens))
+            if concept in vocab.word_to_idx:
+                return [concept]
+
+            # Otherwise return the just the root token
+            root = replace_numbers(chunk.root.text.lower())
+            if root in vocab.word_to_idx:
+                return [root]
+
+    # Logic for other types of roots
+    for token in doc:
+        if token.dep_ == 'ROOT':
+            concept = replace_numbers(token.text.lower())
+            if concept in vocab.word_to_idx:
+                return [concept]
+
+    return []
 
 
 def link(input: Path,
@@ -170,7 +206,7 @@ def link(input: Path,
         Number of candidates to return.
     """
     assert metric in {'cosine', 'l2'}
-    assert extraction_strategy in {'exhaustive', 'greedy'}
+    assert extraction_strategy in {'exhaustive', 'greedy', 'root'}
 
     if debug:
         logger.setLevel(logging.DEBUG)
@@ -184,15 +220,34 @@ def link(input: Path,
     for instance in generate_instances(input):
         output_instance = instance.copy()
         for uri, node in instance['nodes'].items():
-            mention = ' '.join(node['phrase'])
-            tokens = english_filter([x.lower() for x in node['phrase']])
-            concepts = extraction_fn(tokens, vocab)
+
+            # Extract concept tokens from phrase
+            phrase = node['phrase']
+            concepts = extraction_fn(phrase, vocab)
             concept_ids = np.array([vocab.word_to_idx[concept] for concept in concepts])
+
             if len(concept_ids) > 0:
-                query = np.mean(embeddings[concept_ids], axis=0, keepdims=True)
+                if len(concept_ids) > 1:
+                    mean_embedding = np.mean(embeddings[concept_ids], axis=0, keepdims=True)
+                    query = np.concatenate((embeddings[concept_ids], mean_embedding), axis=0)
+                else:
+                    query = embeddings[concept_ids]
+
                 scores, candidate_ids = index.search(query, num_candidates)
+
+                # Convert from cosine similarity to distance
+                if metric == 'cosine':
+                    scores = 1 - scores
+
+                # If phrase contains k concepts then the search returns k * num_candidates results.
+                # Reduces to top-k
+                scores = scores.flatten()
+                candidate_ids = candidate_ids.flatten()
+                top_k_indices = np.argsort(scores)[:num_candidates]
+                scores = scores[top_k_indices]
+                candidate_ids = candidate_ids[top_k_indices]
             else:
-                scores = candidate_ids = []
+              scores = candidate_ids = []
             output_instance['nodes'][uri]['candidates'] = []
             for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
                 candidate = vocab.idx_to_word[candidate_id]
@@ -218,14 +273,15 @@ def main():
     parser.add_argument('--metric', type=str, default='cosine',
                         help='Distance metric used for nearest neighbor search. One of: "cosine", "l2".')
     parser.add_argument('--extraction_strategy', type=str, default='greedy',
-                        help='Approach for extracting concepts from text. One of: "exhaustive", "greedy". '
+                        help='Approach for extracting concepts from text. One of: "exhaustive", "greedy", "root".'
                              'Exhaustive extraction produces all viable n-grams, e.g., "high school" -> {"high", "school", "high_school"}. '
-                             'Greedy search produces only the largest viable n-grams, e.g., "high school" -> {"high_school"}.')
+                             'Greedy search produces only the largest viable n-grams, e.g., "high school" -> {"high_school"}. '
+                             'Root extraction only produces the root of the dependency parse, e.g., "his car" -> {"car"}.')
     parser.add_argument('--ngram_length', type=int, default=3,
                         help='Maximum length of ngrams to consider when converting text to KG nodes (i.e. ConceptNet concepts).')
     parser.add_argument('--num_candidates', type=int, default=5, help='Number of candidates to return.')
     parser.add_argument('--debug', action='store_true', help='Enables debug statements.')
-    args, _ = parser.parse_known_args()
+    args = parser.parse_args()
 
     link(input=args.input,
          output=args.output,
