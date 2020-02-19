@@ -243,7 +243,7 @@ def graphify(sentence: str):
 			 'edges': edges}
 	return graph
 
-def graphify_dataset(sentences, output_file=None, ):
+def graphify_dataset(sentences, output_file=None):
         global spacy_parser, coref_predictor, srl_predictor
         
         spacy_parser = spacy.load(SPACY_MODEL, disable=['parser', 'tagger'])
