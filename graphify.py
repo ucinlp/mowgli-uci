@@ -6,11 +6,10 @@ from json import dumps
 import spacy
 from tqdm import tqdm
 
-# Change this to use the GPU
 CUDA_DEVICE = -1
-spacy_parser = spacy.load("en_core_web_lg", disable=['parser', 'tagger'])
-coref_predictor = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/coref-model-2018.02.05.tar.gz", cuda_device=CUDA_DEVICE)
-srl_predictor = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/bert-base-srl-2019.06.17.tar.gz", cuda_device=CUDA_DEVICE)
+COREF_MODEL = "https://s3-us-west-2.amazonaws.com/allennlp/models/coref-model-2018.02.05.tar.gz"
+SRL_MODEL = "https://s3-us-west-2.amazonaws.com/allennlp/models/bert-base-srl-2019.06.17.tar.gz"
+SPACY_MODEL = "en_core_web_lg"
 
 def create_node(phrase: list, start_idx: int, end_idx: int, entity_type: list = None):
 	"""
@@ -242,21 +241,42 @@ def graphify(sentence: str):
 			 'edges': edges}
 	return graph
 
+def graphify_dataset(sentences, output_file=None, ):
+        # Change this to use the GPU
+        global spacy_parser, coref_predictor, srl_predictor
+        
+        spacy_parser = spacy.load(SPACY_MODEL, disable=['parser', 'tagger'])
+        coref_predictor = Predictor.from_path(COREF_MODEL, cuda_device=CUDA_DEVICE)
+        srl_predictor = Predictor.from_path(SRL_MODEL, cuda_device=CUDA_DEVICE)
+
+        graphs=[]
+        if output_file:
+                writer = open(output_file, 'w')
+       
+        for sentence in tqdm(sentences): 
+                graph = graphify(sentence.strip())
+                graphs.append(graph)
+                if output_file:
+                        writer.write(dumps(graph) + '\n')
+
+        if output_file:
+                writer.close()
+        return graphs
+
 def main():
-	parser = argparse.ArgumentParser()
-	parser.add_argument('--input', type=str, \
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--input', type=str, \
 		help='Path to input text file. Each line in the file will be turned into a graph.')
-	parser.add_argument('--output', type=str, \
+        parser.add_argument('--output', type=str, \
 		help='Path to output JSONL file. Each line in the output file will be a graph corresponding to a line in the input file')
-	args = parser.parse_args()
+        args = parser.parse_args()
 
 	# Graphify the input file
-	writer = open(args.output, 'w')
-	with open(args.input) as f:
-		for sentence in tqdm(f):
-			graph = graphify(sentence.strip())
-			writer.write(dumps(graph) + '\n')
-	writer.close()
+        with open(args.input) as f:
+                sentences=[]
+                for sentence in f:
+                        sentences.append(sentence)
+                graphs=graphify_dataset(sentences, args.output)
 
 if __name__ == '__main__':
 	main()
