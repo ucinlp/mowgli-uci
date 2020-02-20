@@ -291,7 +291,7 @@ def main():
     parser.add_argument('--debug', action='store_true', help='Enables debug statements.')
     args = parser.parse_args()
 
-    link(input=generate_instances(args.input),
+    link(graphs=generate_instances(args.input),
          output=args.output,
          embedding_file=args.embedding_file,
          metric=args.metric,
