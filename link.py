@@ -20,8 +20,7 @@ CACHE_DIR = Path('.cache/')
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-nlp = spacy.load('en_core_web_lg')
-
+SPACY_MODEL='en_core_web_lg'
 
 def init_cache():
     if not CACHE_DIR.exists():
@@ -177,14 +176,14 @@ def root_extraction(phrase: List[str],
     return []
 
 
-def link(input: Path,
-         output: Path,
-         embedding_file: Path,
+def link(graphs: List,
+         output: Path = None,
+         embedding_file: Path = Path('numberbatch-en-19.08.txt'),
          metric: str = 'cosine',
          extraction_strategy: str = 'greedy',
          ngram_length: int = 3,
          num_candidates: int = 5,
-         debug: bool = False) -> None:
+         debug: bool = False) -> List:
     """
     Browse the top-k conceptnet candidates for a node.
 
@@ -211,13 +210,18 @@ def link(input: Path,
     if debug:
         logger.setLevel(logging.DEBUG)
 
+    global nlp
+    nlp = spacy.load(SPACY_MODEL)
+        
     init_cache()
     vocab, embeddings = read_embedding_file(embedding_file)
     index = build_index(metric, embeddings)
     extraction_fn = get_extraction_fn(extraction_strategy, ngram_length)
 
-    output_file = open(output, 'w')
-    for instance in generate_instances(input):
+    if output:
+        output_file = open(output, 'w')
+    output_instances=[]
+    for instance in graphs:
         output_instance = instance.copy()
         for uri, node in instance['nodes'].items():
 
@@ -247,7 +251,7 @@ def link(input: Path,
                 scores = scores[top_k_indices]
                 candidate_ids = candidate_ids[top_k_indices]
             else:
-              scores = candidate_ids = []
+                scores = candidate_ids = []
             output_instance['nodes'][uri]['candidates'] = []
             for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
                 candidate = vocab.idx_to_word[candidate_id]
@@ -260,8 +264,12 @@ def link(input: Path,
                     'uri': '/c/en/' + candidate,  # TODO: Support other KBs
                     'score': score.item()
                 })
-
-        output_file.write(json.dumps(output_instance) + '\n')
+        output_instances.append(output_instance)
+        if output:
+            output_file.write(json.dumps(output_instance) + '\n')
+    if output:
+        output_file.close()
+    return output_instances
 
 
 def main():
@@ -283,7 +291,7 @@ def main():
     parser.add_argument('--debug', action='store_true', help='Enables debug statements.')
     args = parser.parse_args()
 
-    link(input=args.input,
+    link(input=generate_instances(args.input),
          output=args.output,
          embedding_file=args.embedding_file,
          metric=args.metric,
