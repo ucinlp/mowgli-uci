@@ -178,7 +178,7 @@ def root_extraction(phrase: List[str],
 
 def link(graphs: List,
          output: Path = None,
-         embedding_file: Path = Path('numberbatch-en-19.08.txt'),
+         embedding_file: Path = Path('../numberbatch-en-19.08.txt'),
          metric: str = 'cosine',
          extraction_strategy: str = 'greedy',
          ngram_length: int = 3,
@@ -224,7 +224,7 @@ def link(graphs: List,
     for instance in graphs:
         output_instance = instance.copy()
         for uri, node in instance['nodes'].items():
-
+            print('Current node', uri, node)
             # Extract concept tokens from phrase
             phrase = node['phrase']
             concepts = extraction_fn(phrase, vocab)
@@ -275,8 +275,8 @@ def link(graphs: List,
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--input', type=Path, required=True, help='JSON-Lines file containing the text graphs.')
-    parser.add_argument('--output', type=Path, required=True, help='Output JSON-Lines file.')
-    parser.add_argument('--embedding_file', type=Path, required=True,
+    parser.add_argument('--output', type=Path, required=False, help='Output JSON-Lines file.')
+    parser.add_argument('--embedding_file', type=Path, required=False,
                         help='KG node embeddings. Currently only ConceptNet Numberbatch supported.')
     parser.add_argument('--metric', type=str, default='cosine',
                         help='Distance metric used for nearest neighbor search. One of: "cosine", "l2".')
