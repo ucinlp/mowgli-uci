@@ -20,7 +20,8 @@ CACHE_DIR = Path('.cache/')
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-SPACY_MODEL='en_core_web_lg'
+SPACY_MODEL = 'en_core_web_lg'
+
 
 def init_cache():
     if not CACHE_DIR.exists():
@@ -189,8 +190,8 @@ def link(graphs: List,
 
     Parameters
     ==========
-    input : Path
-        A jsonl file containing parsed alpha NLI graphs.
+    graphs : List
+        A list containing parsed alpha NLI graphs.
     output : Path
         Jsonl file to serialize output to.
     embedding_file : Path
@@ -204,6 +205,7 @@ def link(graphs: List,
     num_candidates : int
         Number of candidates to return.
     """
+
     assert metric in {'cosine', 'l2'}
     assert extraction_strategy in {'exhaustive', 'greedy', 'root'}
 
@@ -212,7 +214,7 @@ def link(graphs: List,
 
     global nlp
     nlp = spacy.load(SPACY_MODEL)
-        
+
     init_cache()
     vocab, embeddings = read_embedding_file(embedding_file)
     index = build_index(metric, embeddings)
@@ -220,20 +222,22 @@ def link(graphs: List,
 
     if output:
         output_file = open(output, 'w')
-    output_instances=[]
+    output_instances = []
     for instance in graphs:
         output_instance = instance.copy()
         for uri, node in instance['nodes'].items():
-            print('Current node', uri, node)
             # Extract concept tokens from phrase
             phrase = node['phrase']
             concepts = extraction_fn(phrase, vocab)
-            concept_ids = np.array([vocab.word_to_idx[concept] for concept in concepts])
+            concept_ids = np.array([vocab.word_to_idx[concept]
+                                    for concept in concepts])
 
             if len(concept_ids) > 0:
                 if len(concept_ids) > 1:
-                    mean_embedding = np.mean(embeddings[concept_ids], axis=0, keepdims=True)
-                    query = np.concatenate((embeddings[concept_ids], mean_embedding), axis=0)
+                    mean_embedding = np.mean(
+                        embeddings[concept_ids], axis=0, keepdims=True)
+                    query = np.concatenate(
+                        (embeddings[concept_ids], mean_embedding), axis=0)
                 else:
                     query = embeddings[concept_ids]
 
@@ -250,20 +254,21 @@ def link(graphs: List,
                 top_k_indices = np.argsort(scores)[:num_candidates]
                 scores = scores[top_k_indices]
                 candidate_ids = candidate_ids[top_k_indices]
+            
+                output_instance['nodes'][uri]['candidates'] = []
+                for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
+                    candidate = vocab.idx_to_word[candidate_id]
+                    if '#' in candidate:
+                        logger.warning(f'Encountered candidate URI: "{candidate}". Due to preprocessing steps '
+                                           'used to produce the ConceptNet Numberbatch embeddings this is '
+                                           'likely a bad link, and will be skipped.')
+                        continue
+                    output_instance['nodes'][uri]['candidates'].append({
+                            'uri': '/c/en/' + candidate,  # TODO: Support other KBs
+                            'score': score.item()
+                    })
             else:
-                scores = candidate_ids = []
-            output_instance['nodes'][uri]['candidates'] = []
-            for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
-                candidate = vocab.idx_to_word[candidate_id]
-                if '#' in candidate:
-                    logger.warning(f'Encountered candidate URI: "{candidate}". Due to preprocessing steps '
-                                    'used to produce the ConceptNet Numberbatch embeddings this is '
-                                    'likely a bad link, and will be skipped.')
-                    continue
-                output_instance['nodes'][uri]['candidates'].append({
-                    'uri': '/c/en/' + candidate,  # TODO: Support other KBs
-                    'score': score.item()
-                })
+                output_instance['nodes'][uri]['candidates'] = []
         output_instances.append(output_instance)
         if output:
             output_file.write(json.dumps(output_instance) + '\n')
@@ -273,9 +278,12 @@ def link(graphs: List,
 
 
 def main():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--input', type=Path, required=True, help='JSON-Lines file containing the text graphs.')
-    parser.add_argument('--output', type=Path, required=False, help='Output JSON-Lines file.')
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--input', type=Path, required=True,
+                        help='JSON-Lines file containing the text graphs.')
+    parser.add_argument('--output', type=Path, required=False,
+                        help='Output JSON-Lines file.')
     parser.add_argument('--embedding_file', type=Path, required=False,
                         help='KG node embeddings. Currently only ConceptNet Numberbatch supported.')
     parser.add_argument('--metric', type=str, default='cosine',
@@ -287,8 +295,10 @@ def main():
                              'Root extraction only produces the root of the dependency parse, e.g., "his car" -> {"car"}.')
     parser.add_argument('--ngram_length', type=int, default=3,
                         help='Maximum length of ngrams to consider when converting text to KG nodes (i.e. ConceptNet concepts).')
-    parser.add_argument('--num_candidates', type=int, default=5, help='Number of candidates to return.')
-    parser.add_argument('--debug', action='store_true', help='Enables debug statements.')
+    parser.add_argument('--num_candidates', type=int,
+                        default=5, help='Number of candidates to return.')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enables debug statements.')
     args = parser.parse_args()
 
     link(graphs=generate_instances(args.input),
