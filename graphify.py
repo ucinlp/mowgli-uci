@@ -116,34 +116,39 @@ def create_nodes_and_edges_from_srl_dict(srl_dict, all_words):
 	else:
 		return nodes, edges
 
-def create_graph_from_srl_parse(sentence):
+def create_graph_from_srl_parse(sentence: str):
 	out = srl_predictor.predict(sentence)
 	tokenized_sentence = out['words']
 	nodes = {}
 	edges = {}
 
-	### Initialize graph using SRL parser
-	# Each sentence may have multiple predicates. AllenNLP SRL parser
-	# returns a dictionary for each predicate and its associated argument.
-	# Iterate through the dictionaries, creating nodes and edges.
-	for idx, srl_dict in enumerate(out['verbs']):
-		# print(srl_dict['description'])
-		cur_nodes, cur_edges = create_nodes_and_edges_from_srl_dict(srl_dict, out['words'])
-		nodes.update(cur_nodes)
-		edges.update(cur_edges)
-		
-	# Resolve subparses. Some phrases may be subphrases of a longer phrase. 
-	# For these, add an edge from the longer phrase to the shorter one with the label 'sub'
-	for node1_id, node2_id in list(itertools.combinations(nodes.keys(), 2)):
-		node1_spans = (nodes[node1_id]['start_idx'], nodes[node1_id]['end_idx'])
-		node2_spans = (nodes[node2_id]['start_idx'], nodes[node2_id]['end_idx'])
-		
-		if node1_spans[0] >= node2_spans[0] and node1_spans[1] <= node2_spans[1] and node1_spans != node2_spans:
-			edge, edge_id = create_edge(node2_id, node1_id, 'sub', 'srl')
-			edges[edge_id] = edge
-		elif node2_spans[0] >= node1_spans[0] and node2_spans[1] <= node1_spans[1] and node1_spans != node2_spans:
-			edge, edge_id = create_edge(node1_id, node2_id, 'sub', 'srl')
-			edges[edge_id] = edge
+	# If SRL cannot parse (e.g. when `sentence` is a short phrase), create a node for the tokenized sentence
+	if len(out['verbs']) == 0:
+		node, node_id = create_node(tokenized_sentence, start_idx=0, end_idx=len(tokenized_sentence)-1)
+		nodes[node_id] = node
+	else:
+		### Initialize graph using SRL parser
+		# Each sentence may have multiple predicates. AllenNLP SRL parser
+		# returns a dictionary for each predicate and its associated argument.
+		# Iterate through the dictionaries, creating nodes and edges.
+		for idx, srl_dict in enumerate(out['verbs']):
+			# print(srl_dict['description'])
+			cur_nodes, cur_edges = create_nodes_and_edges_from_srl_dict(srl_dict, out['words'])
+			nodes.update(cur_nodes)
+			edges.update(cur_edges)
+			
+		# Resolve subparses. Some phrases may be subphrases of a longer phrase. 
+		# For these, add an edge from the longer phrase to the shorter one with the label 'sub'
+		for node1_id, node2_id in list(itertools.combinations(nodes.keys(), 2)):
+			node1_spans = (nodes[node1_id]['start_idx'], nodes[node1_id]['end_idx'])
+			node2_spans = (nodes[node2_id]['start_idx'], nodes[node2_id]['end_idx'])
+			
+			if node1_spans[0] >= node2_spans[0] and node1_spans[1] <= node2_spans[1] and node1_spans != node2_spans:
+				edge, edge_id = create_edge(node2_id, node1_id, 'sub', 'srl')
+				edges[edge_id] = edge
+			elif node2_spans[0] >= node1_spans[0] and node2_spans[1] <= node1_spans[1] and node1_spans != node2_spans:
+				edge, edge_id = create_edge(node1_id, node2_id, 'sub', 'srl')
+				edges[edge_id] = edge
 
 	return tokenized_sentence, nodes, edges
 
