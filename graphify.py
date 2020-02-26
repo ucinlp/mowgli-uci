@@ -116,34 +116,39 @@ def create_nodes_and_edges_from_srl_dict(srl_dict, all_words):
 	else:
 		return nodes, edges
 
-def create_graph_from_srl_parse(sentence):
+def create_graph_from_srl_parse(sentence: str):
 	out = srl_predictor.predict(sentence)
 	tokenized_sentence = out['words']
 	nodes = {}
 	edges = {}
 
-	### Initialize graph using SRL parser
-	# Each sentence may have multiple predicates. AllenNLP SRL parser
-	# returns a dictionary for each predicate and its associated argument.
-	# Iterate through the dictionaries, creating nodes and edges.
-	for idx, srl_dict in enumerate(out['verbs']):
-		# print(srl_dict['description'])
-		cur_nodes, cur_edges = create_nodes_and_edges_from_srl_dict(srl_dict, out['words'])
-		nodes.update(cur_nodes)
-		edges.update(cur_edges)
-		
-	# Resolve subparses. Some phrases may be subphrases of a longer phrase. 
-	# For these, add an edge from the longer phrase to the shorter one with the label 'sub'
-	for node1_id, node2_id in list(itertools.combinations(nodes.keys(), 2)):
-		node1_spans = (nodes[node1_id]['start_idx'], nodes[node1_id]['end_idx'])
-		node2_spans = (nodes[node2_id]['start_idx'], nodes[node2_id]['end_idx'])
-		
-		if node1_spans[0] >= node2_spans[0] and node1_spans[1] <= node2_spans[1] and node1_spans != node2_spans:
-			edge, edge_id = create_edge(node2_id, node1_id, 'sub', 'srl')
-			edges[edge_id] = edge
-		elif node2_spans[0] >= node1_spans[0] and node2_spans[1] <= node1_spans[1] and node1_spans != node2_spans:
-			edge, edge_id = create_edge(node1_id, node2_id, 'sub', 'srl')
-			edges[edge_id] = edge
+	# If SRL cannot parse (e.g. when `sentence` is a short phrase), create a node for the tokenized sentence
+	if len(out['verbs']) == 0:
+		node, node_id = create_node(tokenized_sentence, start_idx=0, end_idx=len(tokenized_sentence)-1)
+		nodes[node_id] = node
+	else:
+		### Initialize graph using SRL parser
+		# Each sentence may have multiple predicates. AllenNLP SRL parser
+		# returns a dictionary for each predicate and its associated argument.
+		# Iterate through the dictionaries, creating nodes and edges.
+		for idx, srl_dict in enumerate(out['verbs']):
+			# print(srl_dict['description'])
+			cur_nodes, cur_edges = create_nodes_and_edges_from_srl_dict(srl_dict, out['words'])
+			nodes.update(cur_nodes)
+			edges.update(cur_edges)
+			
+		# Resolve subparses. Some phrases may be subphrases of a longer phrase. 
+		# For these, add an edge from the longer phrase to the shorter one with the label 'sub'
+		for node1_id, node2_id in list(itertools.combinations(nodes.keys(), 2)):
+			node1_spans = (nodes[node1_id]['start_idx'], nodes[node1_id]['end_idx'])
+			node2_spans = (nodes[node2_id]['start_idx'], nodes[node2_id]['end_idx'])
+			
+			if node1_spans[0] >= node2_spans[0] and node1_spans[1] <= node2_spans[1] and node1_spans != node2_spans:
+				edge, edge_id = create_edge(node2_id, node1_id, 'sub', 'srl')
+				edges[edge_id] = edge
+			elif node2_spans[0] >= node1_spans[0] and node2_spans[1] <= node1_spans[1] and node1_spans != node2_spans:
+				edge, edge_id = create_edge(node1_id, node2_id, 'sub', 'srl')
+				edges[edge_id] = edge
 
 	return tokenized_sentence, nodes, edges
 
@@ -191,6 +196,11 @@ def get_coreference_node(nodes, edges, root_node_ids, indices):
 	return nodes, edges, None
 
 def add_coreference_edges_to_graph(sentence, tokenized_sentence, nodes, edges):
+	# When tokenizing input, coref model does not strip off consecutive spaces.
+	# This can result in the tokenized output of the coref model having a space as a token.
+	# Address this here by splitting and rejoining, removing consecutive spaces.
+	sentence = ' '.join(sentence.split())
+
 	# First get a list of root nodes.	
 	# Coreference edges will only be added to the root nodes in the SRL graph.
 	root_node_ids = list(nodes.keys())
@@ -244,40 +254,40 @@ def graphify(sentence: str):
 	return graph
 
 def graphify_dataset(sentences, output_file=None):
-        global spacy_parser, coref_predictor, srl_predictor
-        
-        spacy_parser = spacy.load(SPACY_MODEL, disable=['parser', 'tagger'])
-        coref_predictor = Predictor.from_path(COREF_MODEL, cuda_device=CUDA_DEVICE)
-        srl_predictor = Predictor.from_path(SRL_MODEL, cuda_device=CUDA_DEVICE)
+	global spacy_parser, coref_predictor, srl_predictor
+	
+	spacy_parser = spacy.load(SPACY_MODEL, disable=['parser', 'tagger'])
+	coref_predictor = Predictor.from_path(COREF_MODEL, cuda_device=CUDA_DEVICE)
+	srl_predictor = Predictor.from_path(SRL_MODEL, cuda_device=CUDA_DEVICE)
 
-        graphs=[]
-        if output_file:
-                writer = open(output_file, 'w')
-       
-        for sentence in tqdm(sentences): 
-                graph = graphify(sentence.strip())
-                graphs.append(graph)
-                if output_file:
-                        writer.write(dumps(graph) + '\n')
+	graphs=[]
+	if output_file:
+			writer = open(output_file, 'w')
 
-        if output_file:
-                writer.close()
-        return graphs
+	for sentence in tqdm(sentences): 
+			graph = graphify(sentence.strip())
+			graphs.append(graph)
+			if output_file:
+					writer.write(dumps(graph) + '\n')
+
+	if output_file:
+			writer.close()
+	return graphs
 
 def main():
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--input', type=str, \
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--input', type=str, \
 		help='Path to input text file. Each line in the file will be turned into a graph.')
-        parser.add_argument('--output', type=str, \
+	parser.add_argument('--output', type=str, \
 		help='Path to output JSONL file. Each line in the output file will be a graph corresponding to a line in the input file')
-        args = parser.parse_args()
+	args = parser.parse_args()
 
 	# Graphify the input file
-        with open(args.input) as f:
-                sentences=[]
-                for sentence in f:
-                        sentences.append(sentence)
-                graphs=graphify_dataset(sentences, args.output)
+	with open(args.input) as f:
+		sentences=[]
+		for sentence in f:
+				sentences.append(sentence)
+		graphs=graphify_dataset(sentences, args.output)
 
 if __name__ == '__main__':
 	main()
