@@ -189,8 +189,8 @@ def link(graphs: List,
 
     Parameters
     ==========
-    input : Path
-        A jsonl file containing parsed alpha NLI graphs.
+    input : List
+        A list containing parsed alpha NLI graphs.
     output : Path
         Jsonl file to serialize output to.
     embedding_file : Path
@@ -250,27 +250,26 @@ def link(graphs: List,
                 top_k_indices = np.argsort(scores)[:num_candidates]
                 scores = scores[top_k_indices]
                 candidate_ids = candidate_ids[top_k_indices]
+                output_instance['nodes'][uri]['candidates'] = []
+                for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
+                    candidate = vocab.idx_to_word[candidate_id]
+                    if '#' in candidate:
+                        logger.warning(f'Encountered candidate URI: "{candidate}". Due to preprocessing steps '
+										'used to produce the ConceptNet Numberbatch embeddings this is '
+										'likely a bad link, and will be skipped.')
+                        continue
+                    output_instance['nodes'][uri]['candidates'].append({
+						'uri': '/c/en/' + candidate,  # TODO: Support other KBs
+						'score': score.item()
+                    })
             else:
-                scores = candidate_ids = []
-            output_instance['nodes'][uri]['candidates'] = []
-            for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
-                candidate = vocab.idx_to_word[candidate_id]
-                if '#' in candidate:
-                    logger.warning(f'Encountered candidate URI: "{candidate}". Due to preprocessing steps '
-                                    'used to produce the ConceptNet Numberbatch embeddings this is '
-                                    'likely a bad link, and will be skipped.')
-                    continue
-                output_instance['nodes'][uri]['candidates'].append({
-                    'uri': '/c/en/' + candidate,  # TODO: Support other KBs
-                    'score': score.item()
-                })
+                output_instance['nodes'][uri]['candidates'] = []
         output_instances.append(output_instance)
         if output:
             output_file.write(json.dumps(output_instance) + '\n')
     if output:
         output_file.close()
     return output_instances
-
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
