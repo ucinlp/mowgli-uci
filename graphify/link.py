@@ -13,7 +13,7 @@ import numpy as np
 import spacy
 from tqdm import tqdm
 
-from text_to_uri import english_filter, replace_numbers
+from graphify.text_to_uri import english_filter, replace_numbers
 
 
 CACHE_DIR = Path('.cache/')
@@ -212,7 +212,7 @@ def link(graphs: List,
 
     global nlp
     nlp = spacy.load(SPACY_MODEL)
-        
+
     init_cache()
     vocab, embeddings = read_embedding_file(embedding_file)
     index = build_index(metric, embeddings)
