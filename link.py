@@ -224,7 +224,6 @@ def link(graphs: List,
     for instance in graphs:
         output_instance = instance.copy()
         for uri, node in instance['nodes'].items():
-            print('Current node', uri, node)
             # Extract concept tokens from phrase
             phrase = node['phrase']
             concepts = extraction_fn(phrase, vocab)
