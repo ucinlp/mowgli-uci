@@ -11,5 +11,10 @@ setup(
         "spacy>=2.2.3",
         "tqdm>=4.40.2",
         "wordfreq>=2.2.1"
+    ],
+    tests_require=[
+        'pytest',
+        'pytest-cov',
+        'codecov'
     ]
 )
