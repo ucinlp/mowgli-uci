@@ -15,7 +15,7 @@ setup(
         "wordfreq>=2.2.1"
     ],
     tests_require=test_deps,
-    extras={
+    extras_require={
         'test': test_deps
     }
 )
