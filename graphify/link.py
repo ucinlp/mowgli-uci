@@ -9,6 +9,8 @@ from typing import Callable, List, Tuple
 import warnings
 
 import faiss
+import fasttext
+import fasttext.util
 import numpy as np
 import spacy
 from tqdm import tqdm
@@ -21,6 +23,7 @@ CACHE_DIR = Path('.cache/')
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 SPACY_MODEL='en_core_web_lg'
+
 
 def init_cache():
     if not CACHE_DIR.exists():
@@ -183,6 +186,7 @@ def link(graphs: List,
          extraction_strategy: str = 'greedy',
          ngram_length: int = 3,
          num_candidates: int = 5,
+         only_link_atoms: bool = False,
          debug: bool = False) -> List:
     """
     Browse the top-k conceptnet candidates for a node.
@@ -203,6 +207,8 @@ def link(graphs: List,
         Max length of n-grams to consider during concept extraction.
     num_candidates : int
         Number of candidates to return.
+    only_link_atoms : bool
+        Will only link the atoms (e.g., word tokens, word pieces) in the graph.
     """
     assert metric in {'cosine', 'l2'}
     assert extraction_strategy in {'exhaustive', 'greedy', 'root'}
@@ -212,6 +218,10 @@ def link(graphs: List,
 
     global nlp
     nlp = spacy.load(SPACY_MODEL)
+
+    global ft
+    fasttext.util.download_model('en', if_exists='ignore')
+    ft = fasttext.load_model('cc.en.300.bin')
 
     init_cache()
     vocab, embeddings = read_embedding_file(embedding_file)
@@ -223,18 +233,25 @@ def link(graphs: List,
     output_instances=[]
     for instance in graphs:
         output_instance = instance.copy()
-        for uri, node in instance['nodes'].items():
+        if only_link_atoms:
+            nodes = [x for x in instance['nodes'] if x['is_atom']]
+        else:
+            nodes = instance['nodes']
+        for uri, node in nodes.items():
             # Extract concept tokens from phrase
             phrase = node['phrase']
-            concepts = extraction_fn(phrase, vocab)
-            concept_ids = np.array([vocab.word_to_idx[concept] for concept in concepts])
+            # concepts = extraction_fn(phrase, vocab)
+            # concept_ids = np.array([vocab.word_to_idx[concept] for concept in concepts])
 
-            if len(concept_ids) > 0:
-                if len(concept_ids) > 1:
-                    mean_embedding = np.mean(embeddings[concept_ids], axis=0, keepdims=True)
-                    query = np.concatenate((embeddings[concept_ids], mean_embedding), axis=0)
-                else:
-                    query = embeddings[concept_ids]
+            if len(phrase) > 0:
+                # if len(concept_ids) > 1:
+                #     mean_embedding = np.mean(embeddings[concept_ids], axis=0, keepdims=True)
+                #     query = np.concatenate((embeddings[concept_ids], mean_embedding), axis=0)
+                #     # query = mean_embedding
+                # else:
+                #     query = embeddings[concept_ids]
+                embeddings = np.stack([ft[x] for x in phrase], axis=0)
+                query = np.mean(embeddings, axis=0, keepdims=True)
 
                 scores, candidate_ids = index.search(query, num_candidates)
 
@@ -252,13 +269,13 @@ def link(graphs: List,
                 output_instance['nodes'][uri]['candidates'] = []
                 for candidate_id, score in zip(np.nditer(candidate_ids), np.nditer(scores)):
                     candidate = vocab.idx_to_word[candidate_id]
-                    if '#' in candidate:
-                        logger.warning(f'Encountered candidate URI: "{candidate}". Due to preprocessing steps '
-										'used to produce the ConceptNet Numberbatch embeddings this is '
-										'likely a bad link, and will be skipped.')
-                        continue
+                    # if '#' in candidate:
+                    #     logger.warning(f'Encountered candidate URI: "{candidate}". Due to preprocessing steps '
+					# 					'used to produce the ConceptNet Numberbatch embeddings this is '
+					# 					'likely a bad link, and will be skipped.')
+                    #     continue
                     output_instance['nodes'][uri]['candidates'].append({
-						'uri': '/c/en/' + candidate,  # TODO: Support other KBs
+						'uri': candidate,
 						'score': score.item()
                     })
             else:
@@ -269,6 +286,7 @@ def link(graphs: List,
     if output:
         output_file.close()
     return output_instances
+
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)

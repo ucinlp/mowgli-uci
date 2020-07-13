@@ -15,7 +15,8 @@ COREF_MODEL = "https://s3-us-west-2.amazonaws.com/allennlp/models/coref-model-20
 SRL_MODEL = "https://s3-us-west-2.amazonaws.com/allennlp/models/bert-base-srl-2019.06.17.tar.gz"
 SPACY_MODEL = "en_core_web_lg"
 
-def create_node(phrase: list, start_idx: int, end_idx: int, entity_type: list = None):
+
+def create_node(phrase: list, start_idx: int, end_idx: int, entity_type: list = None, is_atom: bool = False):
     """
 
 
@@ -28,13 +29,15 @@ def create_node(phrase: list, start_idx: int, end_idx: int, entity_type: list = 
     node = {'phrase': phrase,
             'start_idx': start_idx,
             'end_idx': end_idx,
-            'entity_type': entity_type}
+            'entity_type': entity_type,
+            'is_atom': is_atom}
 
     # For the node id, turn the node dictionary into a string, sort the string,
     # and get the hash of the MD5 hash of the string.
     result = hashlib.md5(''.join(sorted(node.__repr__())).encode())
     node_id = result.hexdigest()
     return node, node_id
+
 
 def create_edge(head_node_id: str, tail_node_id: str, edge_name: str, edge_source: str):
     """
@@ -51,6 +54,7 @@ def create_edge(head_node_id: str, tail_node_id: str, edge_name: str, edge_sourc
     edge_id = result.hexdigest()
 
     return edge, edge_id
+
 
 def create_nodes_and_edges_from_srl_dict(srl_dict, all_words):
     """ Creates nodes and edges from a predicate and its arguments
@@ -123,6 +127,7 @@ def create_nodes_and_edges_from_srl_dict(srl_dict, all_words):
     else:
         return nodes, edges
 
+
 def create_graph_from_srl_parse(sentence: str):
     out = srl_predictor.predict(sentence)
     tokenized_sentence = out['words']
@@ -164,6 +169,7 @@ def create_graph_from_srl_parse(sentence: str):
 
     return tokenized_sentence, nodes, edges
 
+
 def add_entity_types_to_graph(sentence, nodes, edges):
     entities = []
     for word in spacy_parser(sentence):
@@ -174,6 +180,7 @@ def add_entity_types_to_graph(sentence, nodes, edges):
             			nodes[node_id]['entity_type'][idx] = word.ent_type_
 
     return nodes, edges
+
 
 def get_coreference_node(nodes, edges, root_node_ids, indices):
     """ Checks if a phrase exists as a node. If not, we find
@@ -206,6 +213,7 @@ def get_coreference_node(nodes, edges, root_node_ids, indices):
 
     # print('Could not create coref edge')
     return nodes, edges, None
+
 
 def add_coreference_edges_to_graph(sentence, tokenized_sentence, nodes, edges):
     # When tokenizing input, coref model does not strip off consecutive spaces.
@@ -251,21 +259,43 @@ def add_coreference_edges_to_graph(sentence, tokenized_sentence, nodes, edges):
 
     return nodes, edges
 
-def graphify(sentence: str):
+
+def shatter_nodes(nodes, edges):
+    """Facilitates token-level linking by creating a new node for each token in every existing node."""
+    for parent_node_id, parent_node in nodes.copy().items():
+        tokens = parent_node['phrase']
+        parent_start_idx = parent_node['start_idx']
+        for i, token in enumerate(tokens):
+            child_node, child_node_id = create_node(
+                phrase=[token],
+                start_idx=parent_start_idx + i,
+                end_idx=parent_start_idx +i,
+                is_atom=True)
+            nodes[child_node_id] = child_node
+            edge, edge_id = create_edge(parent_node_id, child_node_id, edge_name='token', edge_source='tokenization')
+    return nodes, edges
+
+
+def graphify(sentence: str, shatter: bool = False):
     tokenized_sentence, nodes, edges = create_graph_from_srl_parse(sentence)
 
     nodes, edges = add_entity_types_to_graph(sentence, nodes, edges)
 
     nodes, edges = add_coreference_edges_to_graph(sentence, tokenized_sentence, nodes, edges)
 
+    if shatter:
+        nodes, edges = shatter_nodes(nodes, edges)
+
     ### Create graph dictionary and return it
     graph = {'sentence': sentence,
              'tokenized_sentence': tokenized_sentence,
              'nodes': nodes,
              'edges': edges}
+
     return graph
 
-def graphify_dataset(sentences, output_file=None):
+
+def graphify_dataset(sentences, output_file=None, shatter=False):
     global spacy_parser, coref_predictor, srl_predictor
 
     try:
@@ -282,7 +312,7 @@ def graphify_dataset(sentences, output_file=None):
             writer = open(output_file, 'w')
 
     for sentence in tqdm(sentences):
-            graph = graphify(sentence.strip())
+            graph = graphify(sentence.strip(), shatter=shatter)
             graphs.append(graph)
             if output_file:
             		writer.write(dumps(graph) + '\n')
@@ -291,12 +321,15 @@ def graphify_dataset(sentences, output_file=None):
             writer.close()
     return graphs
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', type=str, \
         help='Path to input text file. Each line in the file will be turned into a graph.')
     parser.add_argument('--output', type=str, \
         help='Path to output JSONL file. Each line in the output file will be a graph corresponding to a line in the input file')
+    parser.add_argument('-s', '--shatter', action='store_true',
+        help=' If enabled additional nodes will be added to the graph for each token in existing nodes.')
     args = parser.parse_args()
 
     # Graphify the input file
@@ -304,7 +337,8 @@ def main():
         sentences=[]
         for sentence in f:
             	sentences.append(sentence)
-        graphs=graphify_dataset(sentences, args.output)
+        graphs=graphify_dataset(sentences, args.output, shatter=args.shatter)
+
 
 if __name__ == '__main__':
     main()
